@@ -3,7 +3,7 @@ import requests
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
-from flask import Flask, request
+from flask import Flask
 import threading
 import time
 
@@ -24,11 +24,6 @@ def home():
 
 @app.route('/health')
 def health():
-    return "OK", 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    # Это эндпоинт для обработки вебхуков (если понадобится в будущем)
     return "OK", 200
 
 # Храним диалоги
@@ -104,28 +99,36 @@ async def handle_message(message: types.Message):
         await message.answer("Ошибка соединения. Повторите запрос.")
         print("Ошибка:", e)
 
-# Функция для запуска бота с повторными попытками
-async def start_bot():
+# Функция для запуска бота
+def run_bot():
+    # Создаем новый цикл событий для этого потока
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Удаляем старые вебхуки перед запуском polling
+    loop.run_until_complete(bot.delete_webhook())
+    
+    # Запускаем бота с повторными попытками
     max_retries = 5
     retry_delay = 10  # секунд
     
     for attempt in range(max_retries):
         try:
             print(f"Попытка запуска бота {attempt + 1}/{max_retries}")
-            await executor.start_polling(dp, skip_updates=True, relax=1)
+            executor.start_polling(dp, skip_updates=True, relax=1)
             break
         except Exception as e:
             print(f"Ошибка при запуске бота: {e}")
             if attempt < max_retries - 1:
                 print(f"Повторная попытка через {retry_delay} секунд...")
-                await asyncio.sleep(retry_delay)
+                time.sleep(retry_delay)
             else:
                 print("Все попытки запуска провалились")
 
 # Функция для запуска Flask
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # Запуск и бота, и веб-сервера
 if __name__ == '__main__':
@@ -137,5 +140,5 @@ if __name__ == '__main__':
     # Даем время Flask запуститься
     time.sleep(3)
     
-    # Запускаем бота
-    asyncio.run(start_bot())
+    # Запускаем бота в основном потоке
+    run_bot()
