@@ -1,8 +1,6 @@
 import os
 import requests
-import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ParseMode
 from aiogram.utils import executor
 
 # === Настройки ===
@@ -13,7 +11,7 @@ API_URL = f"https://api-inference.huggingface.co/models/{MODEL_NAME}"
 
 headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
 
-# История диалогов
+# Храним диалоги
 user_conversations = {}
 
 # Создаём бота
@@ -43,7 +41,7 @@ async def start(message: types.Message):
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
 
-    # Инициализация истории
+    # Инициализация
     if user_id not in user_conversations:
         user_conversations[user_id] = [
             {
@@ -53,7 +51,7 @@ async def handle_message(message: types.Message):
             }
         ]
 
-    # Добавляем сообщение пользователя
+    # Добавляем сообщение
     user_conversations[user_id].append({"role": "user", "content": message.text})
 
     try:
@@ -61,7 +59,7 @@ async def handle_message(message: types.Message):
             API_URL,
             headers=headers,
             json={
-                "inputs": user_conversations[user_id][-6:],  # Ограничиваем контекст
+                "inputs": user_conversations[user_id][-6:],
                 "parameters": {
                     "max_new_tokens": 200,
                     "temperature": 0.7,
@@ -81,12 +79,11 @@ async def handle_message(message: types.Message):
             await message.answer("Слишком много запросов. Подождите минуту.")
         else:
             await message.answer("Пока не могу ответить. Попробуйте позже.")
-            print(f"Ошибка: {response.status_code}, {response.text}")
 
     except Exception as e:
         await message.answer("Ошибка соединения. Повторите запрос.")
-        print("Exception:", e)
+        print("Ошибка:", e)
 
-# Запуск бота
+# Запуск
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
