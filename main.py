@@ -2,6 +2,7 @@ import os
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
+from flask import Flask  # Добавляем Flask для веб-сервера
 
 # === Настройки ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -10,6 +11,17 @@ MODEL_NAME = "Qwen/Qwen2.5-1.8B-Instruct"
 API_URL = f"https://api-inference.huggingface.co/models/{MODEL_NAME}"
 
 headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+
+# Создаем Flask приложение для веб-сервера
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Бот работает! 🚀"
+
+@app.route('/health')
+def health():
+    return "OK", 200
 
 # Храним диалоги
 user_conversations = {}
@@ -84,6 +96,20 @@ async def handle_message(message: types.Message):
         await message.answer("Ошибка соединения. Повторите запрос.")
         print("Ошибка:", e)
 
-# Запуск
+# Запуск и бота, и веб-сервера
 if __name__ == '__main__':
+    # Импортируем здесь чтобы избежать циклических импортов
+    import threading
+    from waitress import serve  # Простой WSGI-сервер
+    
+    # Запускаем Flask в отдельном потоке
+    def run_flask():
+        port = int(os.environ.get("PORT", 5000))
+        serve(app, host="0.0.0.0", port=port)
+    
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    # Запускаем бота
     executor.start_polling(dp, skip_updates=True)
