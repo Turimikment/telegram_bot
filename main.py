@@ -1,8 +1,11 @@
 import os
 import requests
+import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
-from flask import Flask  # Добавляем Flask для веб-сервера
+from flask import Flask, request
+import threading
+import time
 
 # === Настройки ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -21,6 +24,11 @@ def home():
 
 @app.route('/health')
 def health():
+    return "OK", 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    # Это эндпоинт для обработки вебхуков (если понадобится в будущем)
     return "OK", 200
 
 # Храним диалоги
@@ -96,20 +104,38 @@ async def handle_message(message: types.Message):
         await message.answer("Ошибка соединения. Повторите запрос.")
         print("Ошибка:", e)
 
+# Функция для запуска бота с повторными попытками
+async def start_bot():
+    max_retries = 5
+    retry_delay = 10  # секунд
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Попытка запуска бота {attempt + 1}/{max_retries}")
+            await executor.start_polling(dp, skip_updates=True, relax=1)
+            break
+        except Exception as e:
+            print(f"Ошибка при запуске бота: {e}")
+            if attempt < max_retries - 1:
+                print(f"Повторная попытка через {retry_delay} секунд...")
+                await asyncio.sleep(retry_delay)
+            else:
+                print("Все попытки запуска провалились")
+
+# Функция для запуска Flask
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
 # Запуск и бота, и веб-сервера
 if __name__ == '__main__':
-    # Импортируем здесь чтобы избежать циклических импортов
-    import threading
-    from waitress import serve  # Простой WSGI-сервер
-    
     # Запускаем Flask в отдельном потоке
-    def run_flask():
-        port = int(os.environ.get("PORT", 5000))
-        serve(app, host="0.0.0.0", port=port)
-    
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
+    # Даем время Flask запуститься
+    time.sleep(3)
+    
     # Запускаем бота
-    executor.start_polling(dp, skip_updates=True)
+    asyncio.run(start_bot())
