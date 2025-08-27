@@ -1,7 +1,9 @@
 import os
 import requests
+import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.types import ParseMode
+from aiogram.utils import executor
 
 # === Настройки ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -16,9 +18,9 @@ user_conversations = {}
 
 # Создаём бота
 bot = Bot(token=TELEGRAM_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-@dp.message(Command("start"))
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     user_conversations[message.from_user.id] = [
         {
@@ -37,7 +39,7 @@ async def start(message: types.Message):
         "Я отвечу, как настоящий клиент!"
     )
 
-@dp.message()
+@dp.message_handler()
 async def handle_message(message: types.Message):
     user_id = message.from_user.id
 
@@ -51,16 +53,15 @@ async def handle_message(message: types.Message):
             }
         ]
 
-    # Ограничиваем историю последними 6 сообщениями
-    conversation = user_conversations[user_id][-6:]
-    conversation.append({"role": "user", "content": message.text})
+    # Добавляем сообщение пользователя
+    user_conversations[user_id].append({"role": "user", "content": message.text})
 
     try:
         response = requests.post(
             API_URL,
             headers=headers,
             json={
-                "inputs": conversation,
+                "inputs": user_conversations[user_id][-6:],  # Ограничиваем контекст
                 "parameters": {
                     "max_new_tokens": 200,
                     "temperature": 0.7,
@@ -75,10 +76,8 @@ async def handle_message(message: types.Message):
             user_conversations[user_id].append({"role": "assistant", "content": answer})
             await message.answer(answer)
         elif response.status_code == 503:
-            # Модель "спит"
             await message.answer("Сервис временно загружается. Подождите 10–20 секунд и повторите вопрос.")
         elif response.status_code == 429:
-            # Слишком много запросов
             await message.answer("Слишком много запросов. Подождите минуту.")
         else:
             await message.answer("Пока не могу ответить. Попробуйте позже.")
@@ -89,5 +88,5 @@ async def handle_message(message: types.Message):
         print("Exception:", e)
 
 # Запуск бота
-async def main():
-    await dp.start_polling(bot)
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
